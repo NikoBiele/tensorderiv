@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tensorderiv import StencilSet, minimum_neighbours
+from tensorderiv import StencilSet, minimum_neighbours, thread_count
 from test_weights import lcg_points  # the same deterministic points as the Julia package's tests
 
 
@@ -49,6 +49,11 @@ def test_threaded_matches_serial():
     serial = StencilSet(points, threaded=False)
     np.testing.assert_array_equal(threaded.neighbours, serial.neighbours)
     np.testing.assert_array_equal(threaded.weights, serial.weights)
+
+
+def test_thread_count():
+    # rayon always has at least one thread
+    assert thread_count() >= 1
 
 
 def test_input_conversion():

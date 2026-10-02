@@ -11,7 +11,6 @@ from ._core import (
     laplacian_kernel,
     minimum_neighbours,
     stencil_set_weights,
-    sum_of_squares,
     thread_count,
 )
 
@@ -22,7 +21,6 @@ __all__ = [
     "divergence",
     "curl",
     "laplacian",
-    "sum_of_squares",
     "thread_count",
 ]
 
