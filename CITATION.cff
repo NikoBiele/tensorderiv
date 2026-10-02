@@ -13,8 +13,8 @@ abstract: >-
   core. It is a port of the Julia package DiscreteTensorDerivatives.jl by the same author, and is
   tested against it.
 license: MIT
-version: 0.1.0
-date-released: 2026-10-02
+version: 0.2.0
+date-released: 2026-10-03
 doi: "10.5281/zenodo.23111349"
 url: "https://tensorderiv.org"
 repository-code: "https://github.com/NikoBiele/tensorderiv"

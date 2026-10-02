@@ -5,7 +5,7 @@ build-backend = "maturin"
 
 [project]
 name = "tensorderiv"
-version = "0.1.0"
+version = "0.2.0"
 description = "Gradient, divergence, curl and Laplacian of scalar, vector and tensor fields on scattered points, with a Rust core"
 readme = "README.md"                      # shown as the project page on PyPI
 license = "MIT"                           # an SPDX license name; the text is in LICENSE

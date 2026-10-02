@@ -121,6 +121,8 @@ These $N(N+1)(N+2)/6$ equations are added to the same linear system, and they ma
 
 The default number of neighbours `k` is twice the minimum, because stencils at the minimum size are ill-conditioned. Set it explicitly with `StencilSet(points, k=30)`, and use `minimum_neighbours(N, order)` to find the lower bound. Accuracy is lower near the boundary of the point cloud, where stencils are one-sided.
 
+The points must fill their space: points on a curve or surface, such as a plane or sphere in 3D, cannot satisfy the moment conditions, and `StencilSet` raises an error naming the first point that fails. Regular grids work with the default order 2; at order 1 in 3D they need at least 24 neighbours.
+
 ## Performance
 
 `StencilSet` does the expensive work, namely the neighbour search (with SciPy's `cKDTree`) and the weights of every point, and both run on all cores; `thread_count()` reports how many threads the Rust core uses. Pass `threaded=False` to `StencilSet` or to any operator when calling from code that is already parallel. On a 20-core desktop CPU, building second-order stencils for 100000 points in 3D takes about 0.13 seconds, and the gradient of a vector field on them about 7 milliseconds, so one `StencilSet` can be reused cheaply for any number of fields on the same points.

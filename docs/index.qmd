@@ -1,0 +1,86 @@
+---
+title: "tensorderiv"
+subtitle: "Gradient, divergence, curl and Laplacian of scalar, vector and tensor fields on scattered points"
+---
+
+tensorderiv differentiates fields sampled at scattered points: no mesh, no grid and no connectivity
+are needed. Each operator is a weighted sum of differences over a point's nearest neighbours, with
+weights computed once per point cloud and reused for every field. The method is second-order
+accurate by default, the core is written in Rust, and the Python interface works with NumPy arrays.
+
+tensorderiv is a port of the Julia package
+[DiscreteTensorDerivatives.jl](https://github.com/NikoBiele/DiscreteTensorDerivatives.jl), by the
+same author, and is tested against it.
+
+This documentation has four more pages:
+
+- **[User guide](guide.qmd):** stencils and their options, fields of any rank, evaluating at
+  selected points, chaining derivatives, and the method's limitations.
+- **[Accuracy and performance](accuracy.qmd):** convergence on scattered points, the effect of
+  noise and of the number of neighbours, and timings.
+- **[Theory](theory.qmd):** why weighted differences give derivatives, how the weights are
+  computed, and where the accuracy comes from.
+- **[About](about.qmd):** the relation to the Julia package, and how to cite tensorderiv.
+
+::: {.callout-note}
+## Alpha release
+
+All four operators work in any number of dimensions (the curl in 3D), for fields of any rank.
+This documentation grows with the package.
+:::
+
+## Installation
+
+```bash
+pip install tensorderiv
+```
+
+Prebuilt wheels are available for Linux, macOS and Windows, on x86_64 and ARM.
+
+## A first example
+
+Build the stencils once for a point cloud, then differentiate any field sampled at the points:
+
+```{python}
+import numpy as np                                     # arrays
+import tensorderiv as td                               # the package
+
+rng = np.random.default_rng(0)                         # reproducible random numbers
+points = rng.random((20_000, 3))                       # 20000 scattered points in the unit cube, one row per point
+stencils = td.StencilSet(points)                       # neighbours and weights, computed once
+print(stencils)                                        # a short summary
+
+x, y, z = points.T                                     # the coordinate columns
+f = np.sin(x) * np.exp(y) + z**2                       # a scalar field, one value per point
+grad = td.gradient(stencils, f)                        # its gradient, one row (∂f/∂x, ∂f/∂y, ∂f/∂z) per point
+
+p = 12_345                                             # look at one point
+exact = [np.cos(x[p]) * np.exp(y[p]), np.sin(x[p]) * np.exp(y[p]), 2 * z[p]]  # the exact gradient there
+print("point:     ", points[p].round(4))               # where it is
+print("estimated: ", grad[p].round(6))                 # the gradient from the scattered points
+print("exact:     ", np.round(exact, 6))               # the exact gradient, for comparison
+```
+
+The same stencils serve vector fields, and every operator can evaluate at selected points only:
+
+```{python}
+v = np.column_stack([x * y, np.sin(z), x**2 * z])      # a vector field, one row per point
+print("divergence:", td.divergence(stencils, v, at=p).round(6),  # ∇·v at the same point
+      " exact:", round(y[p] + x[p]**2, 6))             # ∂(xy)/∂x + ∂(sin z)/∂y + ∂(x²z)/∂z = y + x²
+print("curl:      ", td.curl(stencils, v, at=p).round(6),        # ∇×v at the same point
+      " exact:", np.round([-np.cos(z[p]), -2 * x[p] * z[p], -x[p]], 6))
+```
+
+## Features
+
+- **No mesh.** Any set of points that fills a region will do: particles in a simulation,
+  measurement stations, samples of a field in a volume, or the nodes of an unstructured grid.
+- **Any field.** The same stencils give the gradient, divergence, curl and Laplacian of scalar,
+  vector and tensor fields of any rank, and derivatives can be chained, for example into a Hessian.
+- **Second order.** The weights cancel the leading error term, so the operators are exact for
+  quadratic fields, and the Laplacian even for cubic ones. A cheaper first-order option is available.
+- **Any dimension.** Gradient, divergence and Laplacian work in any number of dimensions, the curl
+  in three.
+- **Fast.** The neighbour search uses SciPy's k-d tree, and the weights and operators are computed
+  in compiled, multithreaded Rust: second-order stencils for 100000 points in 3D take about a
+  tenth of a second on a desktop CPU.

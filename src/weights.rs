@@ -4,6 +4,12 @@
 //! Offsets are stored with one row per neighbour: the offset of neighbour `q` occupies
 //! `dx[q * dims .. (q + 1) * dims]`, matching a NumPy array of shape (neighbours, dims).
 
+/// The largest violation of the first- and second-moment conditions accepted, in the scaled
+/// units the conditions are solved in. Stencils of points that fill the space satisfy them to
+/// about 1e-10 or better; stencils whose neighbours lie on a curve or surface, or on too few
+/// layers of a grid, miss them by 0.1 or more, and give meaningless derivatives.
+pub const MAX_RESIDUAL: f64 = 1e-6;
+
 /// The number of moment conditions in `dims` dimensions, which is also the smallest number of
 /// neighbours for which they can hold exactly: dims(dims+3)/2 for order 1 (first and second
 /// moments), plus dims(dims+1)(dims+2)/6 for order 2 (third moments).
@@ -62,8 +68,9 @@ fn dot(u: &[f64], v: &[f64]) -> f64 {
 /// Compute the weights of one stencil into `a` (one weight per neighbour), using `workspace` for
 /// scratch space. `dx` holds the offsets x_k − x_0, one row of `dims` values per neighbour.
 ///
-/// The weights satisfy Σ a_k Δx_k = 0 and Σ a_k Δx_k Δx_kᵀ = I, and for order 2 also
-/// Σ a_k Δx_k ⊗ Δx_k ⊗ Δx_k = 0; among all such weights they have minimum norm.
+/// The weights satisfy Σ a_k Δx_k = 0 and Σ a_k Δx_k Δx_kᵀ = I, and for order 2 also, where
+/// the neighbours allow it, Σ a_k Δx_k ⊗ Δx_k ⊗ Δx_k = 0; among all such weights they have
+/// minimum norm. Returns an error if the neighbours cannot satisfy the first two conditions.
 pub fn weights_into(
     a: &mut [f64],
     workspace: &mut Workspace,
@@ -92,6 +99,16 @@ pub fn weights_into(
     }
     moment_system(workspace, dx, dims, h, order);
     minimum_norm_solve(a, workspace);
+    // Check that the weights satisfy the conditions that make the operators correct; they cannot
+    // when the neighbours don't span every direction, and the solver then silently drops them
+    let residual = moment_residual(a, dx, dims, h);
+    if !(residual <= MAX_RESIDUAL) {
+        return Err(format!(
+            "the neighbours cannot satisfy the moment conditions (residual {residual:.1e}); \
+             they may lie on a curve or surface, or too few of them span every direction: \
+             try a larger k, or give the points in coordinates of their own dimension"
+        ));
+    }
     // undo the scaling, since Σ a_k Δx_k Δx_kᵀ = I makes a ∝ 1/h²
     let h2 = h * h;
     for w in a.iter_mut() {
@@ -114,6 +131,35 @@ pub fn weights(dx: &[f64], dims: usize, order: usize) -> Result<Vec<f64>, String
     let mut a = vec![0.0; k];
     weights_into(&mut a, &mut workspace, dx, dims, order)?; // `?` returns early on an error
     Ok(a)
+}
+
+/// The largest violation of the first- and second-moment conditions by the weights `a`, in
+/// scaled units (offsets divided by `h`, weights not yet divided by h²). These two conditions
+/// make the operators correct; the third-moment conditions of order 2 only raise their accuracy,
+/// and are left out, since stencils on the faces of a regular grid cannot meet them yet remain
+/// correct to first order. A NaN anywhere makes the result NaN.
+fn moment_residual(a: &[f64], dx: &[f64], dims: usize, h: f64) -> f64 {
+    let k = a.len();
+    // scaled offset component i of neighbour q
+    let s = |q: usize, i: usize| dx[q * dims + i] / h;
+    let mut worst = 0.0_f64;
+    // keep the larger violation; once a NaN appears it stays, since every comparison with it is false
+    let mut update = |violation: f64| {
+        let violation = violation.abs();
+        if violation.is_nan() || violation > worst {
+            worst = violation;
+        }
+    };
+    for i in 0..dims {
+        update((0..k).map(|q| a[q] * s(q, i)).sum::<f64>()); // Σ a_q S_qi = 0
+    }
+    for i in 0..dims {
+        for j in i..dims {
+            let target = if i == j { 1.0 } else { 0.0 };
+            update((0..k).map(|q| a[q] * s(q, i) * s(q, j)).sum::<f64>() - target); // Σ a_q S_qi S_qj = δ_ij
+        }
+    }
+    worst
 }
 
 /// Fill the workspace with the moment conditions for offsets scaled by `h`, so that all

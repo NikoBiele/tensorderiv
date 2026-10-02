@@ -42,6 +42,51 @@ def test_duplicate_points():
     assert np.all(np.isfinite(stencils.weights))
 
 
+def grid(n, dims):
+    # A regular grid of n points per axis in the unit cube, one row per point
+    axes = np.meshgrid(*[np.linspace(0.0, 1.0, n)] * dims, indexing="ij")
+    return np.stack(axes, axis=-1).reshape(-1, dims)
+
+
+@pytest.mark.parametrize("dims, order, k", [
+    (2, 1, None), (2, 2, None),        # 2D grids work with the defaults
+    (3, 2, None),                      # 3D grids work at order 2 with the default k
+    (3, 1, 24),                        # and at order 1 with more neighbours than the default
+])
+def test_regular_grids(dims, order, k):
+    # Stencils on a regular grid are exact for linear fields everywhere, faces included,
+    # and the Laplacian is exact for quadratic ones
+    from tensorderiv import gradient, laplacian
+    points = grid(15, dims)
+    stencils = StencilSet(points, order=order, k=k)
+    slope = np.arange(1.0, dims + 1)                           # gradient of the linear field
+    assert np.max(np.abs(gradient(stencils, points @ slope) - slope)) < 1e-9
+    assert np.max(np.abs(laplacian(stencils, (points**2).sum(axis=1)) - 2 * dims)) < 1e-9
+
+
+def sphere_surface(n_points):
+    # Points spread evenly over the surface of the unit sphere: a curved surface in 3D
+    rng = np.random.default_rng(0)
+    theta = rng.random(n_points) * 2 * np.pi                   # longitudes
+    phi = np.arccos(rng.uniform(-1.0, 1.0, n_points))          # latitudes
+    return np.column_stack([np.sin(phi) * np.cos(theta), np.sin(phi) * np.sin(theta), np.cos(phi)])
+
+
+@pytest.mark.parametrize("points, order", [
+    (np.column_stack([lcg_points(500, 2), np.zeros(500)]), 2),                         # a plane in 3D
+    (lcg_points(500, 2) @ np.array([[1.0, 0.0, 0.3], [0.0, 1.0, 0.7]]), 2),            # a tilted plane in 3D
+    (sphere_surface(1000), 2),                                                        # a curved surface in 3D
+    (np.column_stack([np.cos(np.linspace(0, 6.2, 500)), np.sin(np.linspace(0, 6.2, 500))]), 2),  # a circle in 2D
+    (np.column_stack([np.linspace(0, 1, 500), np.zeros(500)]), 2),                     # a line in 2D
+    (grid(15, 3), 1),                                                                 # a 3D grid at order 1, default k
+], ids=["plane", "tilted plane", "sphere", "circle", "line", "grid at order 1"])
+def test_degenerate_points_rejected(points, order):
+    # Points that do not fill their space cannot satisfy the moment conditions; the stencils
+    # would give meaningless derivatives, so building them raises an error instead
+    with pytest.raises(ValueError, match="moment conditions"):
+        StencilSet(points, order=order)
+
+
 def test_threaded_matches_serial():
     # Splitting the work over threads must not change a single bit
     points = lcg_points(3000, 3)
