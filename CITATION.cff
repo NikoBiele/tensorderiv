@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use tensorderiv in your work, please cite it as below."
+type: software
+title: "tensorderiv: gradient, divergence, curl and Laplacian on scattered points"
+authors:
+  - given-names: Nikolaj Maack
+    family-names: Bielefeld
+    orcid: "https://orcid.org/0009-0005-4385-6444"
+abstract: >-
+  tensorderiv computes the gradient, divergence, curl and Laplacian of scalar, vector and tensor
+  fields sampled at scattered points, without a mesh, as weighted sums of differences over each
+  point's nearest neighbours, second-order accurate by default and evaluated in a compiled Rust
+  core. It is a port of the Julia package DiscreteTensorDerivatives.jl by the same author, and is
+  tested against it.
+license: MIT
+version: 0.1.0
+date-released: 2026-10-02
+doi: "10.5281/zenodo.23111349"
+url: "https://tensorderiv.org"
+repository-code: "https://github.com/NikoBiele/tensorderiv"
+keywords:
+  - derivatives
+  - gradient
+  - meshless
+  - scattered data
+  - point cloud
+  - numerical methods
