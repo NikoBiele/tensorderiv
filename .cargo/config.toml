@@ -1,0 +1,5 @@
+# Compile for the processor of this machine, including its fused multiply-add (FMA) instruction.
+# Fine for local development and benchmarks; the published wheels use a portable baseline
+# instead, set per platform in .github/workflows/CI.yml.
+[build]
+rustflags = ["-C", "target-cpu=native", "-C", "symbol-mangling-version=v0"]

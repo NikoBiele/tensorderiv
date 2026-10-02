@@ -1,0 +1,36 @@
+# The Python package, built by maturin from the Rust code.
+[build-system]
+requires = ["maturin>=1.15,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "tensorderiv"
+version = "0.1.0"
+description = "Gradient, divergence, curl and Laplacian of scalar, vector and tensor fields on scattered points, with a Rust core"
+readme = "README.md"                      # shown as the project page on PyPI
+license = "MIT"                           # an SPDX license name; the text is in LICENSE
+authors = [{ name = "Nikolaj Maack Bielefeld" }]
+requires-python = ">=3.9"
+dependencies = ["numpy", "scipy"]         # SciPy provides the nearest-neighbour search
+keywords = ["derivatives", "gradient", "meshless", "scattered data", "point cloud", "numerical methods"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.urls]
+Homepage = "https://tensorderiv.org"
+Repository = "https://github.com/NikoBiele/tensorderiv"
+"Julia package" = "https://github.com/NikoBiele/DiscreteTensorDerivatives.jl"
+
+[project.optional-dependencies]
+# juliacall is only needed to test against the Julia package, never by users
+test = ["pytest", "juliacall"]
+
+[tool.maturin]
+python-source = "python"                  # the Python code lives in python/
+module-name = "tensorderiv._core"         # where the compiled Rust module goes
+features = ["pyo3/extension-module"]      # build as a Python extension module

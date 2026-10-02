@@ -1,0 +1,13 @@
+# Rust build output
+target/
+# Python virtual environment and caches
+.venv/
+__pycache__/
+.pytest_cache/
+# compiled extension module and its debug symbols (rebuilt by maturin develop)
+*.pyd
+*.pdb
+*.so
+# documentation build output (published by CI, never committed)
+docs/_site/
+docs/.quarto/
