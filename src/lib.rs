@@ -1,6 +1,10 @@
 // The Rust core of tensorderiv.
 
-use numpy::PyReadonlyArray1;
+// The stencil weights (src/weights.rs) become a module of this crate
+mod weights;
+
+use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
@@ -22,10 +26,41 @@ fn thread_count() -> usize {
     rayon::current_num_threads()
 }
 
+/// Python-visible: the smallest number of neighbours for which the moment conditions of
+/// `order` can hold exactly in `dims` dimensions.
+#[pyfunction]
+fn minimum_neighbours(dims: usize, order: usize) -> PyResult<usize> {
+    if order != 1 && order != 2 {
+        return Err(PyValueError::new_err(format!("order must be 1 or 2, got {order}")));
+    }
+    Ok(weights::minimum_neighbours(dims, order))
+}
+
+/// Python-visible: the weights of one stencil. `offsets` holds the offsets x_k − x_0 of the
+/// neighbours, one row per neighbour (shape (neighbours, dims)).
+#[pyfunction]
+fn stencil_weights<'py>(
+    py: Python<'py>,
+    offsets: PyReadonlyArray2<'py, f64>,
+    order: usize,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let view = offsets.as_array(); // the NumPy array as a Rust array view, without copying
+    let dims = view.ncols(); // number of dimensions: the length of each row
+    // the offsets in row-major order: the view itself if it already is, otherwise a copy, so that
+    // column-major (Fortran-ordered) or strided arrays are read correctly too
+    let standard = view.as_standard_layout();
+    let dx = standard.as_slice().expect("a standard-layout array is contiguous"); // one flat slice, row after row
+    // `map_err` turns the Rust error message into a Python ValueError
+    let a = weights::weights(dx, dims, order).map_err(PyValueError::new_err)?;
+    Ok(a.into_pyarray(py))
+}
+
 /// The module Python imports as tensorderiv._core.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_of_squares, m)?)?;
     m.add_function(wrap_pyfunction!(thread_count, m)?)?;
+    m.add_function(wrap_pyfunction!(minimum_neighbours, m)?)?;
+    m.add_function(wrap_pyfunction!(stencil_weights, m)?)?;
     Ok(())
 }
