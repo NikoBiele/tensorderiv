@@ -6,9 +6,25 @@ import operator
 import numpy as np
 from scipy.spatial import cKDTree
 
-from ._core import minimum_neighbours, stencil_set_weights, sum_of_squares, thread_count
+from ._core import (
+    gradient_kernel,
+    laplacian_kernel,
+    minimum_neighbours,
+    stencil_set_weights,
+    sum_of_squares,
+    thread_count,
+)
 
-__all__ = ["StencilSet", "minimum_neighbours", "sum_of_squares", "thread_count"]
+__all__ = [
+    "StencilSet",
+    "minimum_neighbours",
+    "gradient",
+    "divergence",
+    "curl",
+    "laplacian",
+    "sum_of_squares",
+    "thread_count",
+]
 
 
 class StencilSet:
@@ -84,3 +100,150 @@ def _exclude_self(candidates, k):
     keep = candidates != np.arange(n_points)[:, None]      # False where the point itself is
     keep[keep.sum(axis=1) > k, -1] = False                  # rows without the point itself: drop the last
     return candidates[keep].reshape(n_points, k).astype(np.int64)
+
+
+def gradient(stencils, values, at=None, threaded=True):
+    """Gradient ∇⊗Y ≈ Σ_k a_k Δx_k ⊗ ΔY_k of a scalar, vector or tensor field.
+
+    Parameters
+    ----------
+    stencils : StencilSet
+        The stencils of the points the field is sampled at.
+    values : array_like, shape (n_points, ...)
+        The field, one value per point along the first axis: shape (n_points,) for a scalar
+        field, (n_points, n) for a vector field, (n_points, n, m) for a matrix field, and so on.
+    at : int, slice or array of ints, optional
+        The points to evaluate at, indexed as in NumPy (negative indices count from the end).
+        By default, every point.
+    threaded : bool, optional
+        Spread the points over all cores (default True).
+
+    Returns
+    -------
+    ndarray, shape (n_targets, dims, ...)
+        The derivative direction comes right after the point index:
+        ``result[p, a, j...] = ∂Y_j.../∂x_a`` at point p. For a vector field this is the
+        transpose of the usual Jacobian. With a single integer ``at``, the point axis is left out.
+
+    The estimate is exact for linear fields with order-1 stencils, and also for quadratic
+    fields with order-2 stencils.
+    """
+    flat, field_shape, targets, single = _prepare(stencils, values, at)
+    dims = stencils.points.shape[1]
+    result = gradient_kernel(stencils.points, stencils.neighbours, stencils.weights, flat, targets, threaded)
+    result = result.reshape(len(targets), dims, *field_shape)  # derivative direction, then the field's own axes
+    return result[0] if single else result
+
+
+def divergence(stencils, values, at=None, threaded=True):
+    """Divergence ∇·Y ≈ Σ_k a_k Δx_k · ΔY_k of a vector or tensor field, contracting the
+    derivative with the field's first axis.
+
+    Parameters are as for `gradient`; the field's first axis (after the point axis) must have
+    the spatial dimension.
+
+    Returns
+    -------
+    ndarray, shape (n_targets, ...)
+        For a vector field, one value per point; for a matrix field of shape (n_points, dims, m),
+        shape (n_targets, m) with ``result[p, j] = Σ_a ∂Y_aj/∂x_a``. With a single integer
+        ``at``, the point axis is left out, so a vector field gives a single number.
+
+    The divergence is a contraction of the gradient and has the same accuracy.
+    """
+    _check_stencils(stencils)
+    dims = stencils.points.shape[1]
+    field_shape = np.shape(values)[1:]
+    if len(field_shape) == 0 or field_shape[0] != dims:
+        raise ValueError(
+            f"divergence needs a field whose first axis after the points has length {dims}, "
+            f"but one point's value has shape {field_shape}"
+        )
+    grad = gradient(stencils, values, at, threaded)
+    # contract the derivative direction with the field's first axis; with a single target the
+    # point axis is absent, so the two axes to contract come first
+    first = 0 if np.ndim(grad) == len(field_shape) + 1 else 1
+    return np.trace(grad, axis1=first, axis2=first + 1)
+
+
+def curl(stencils, values, at=None, threaded=True):
+    """Curl ∇×Y ≈ Σ_k a_k Δx_k × ΔY_k of a vector or tensor field in three dimensions, taking
+    the cross product with the field's first axis.
+
+    Parameters are as for `gradient`; the points must be three-dimensional, and the field's
+    first axis (after the point axis) must have length 3.
+
+    Returns
+    -------
+    ndarray
+        The same shape as the field (for the evaluated points), with
+        ``result[p, i, r...] = ε_ijk ∂Y_kr.../∂x_j``. With a single integer ``at``, the point
+        axis is left out.
+
+    The curl is a contraction of the gradient and has the same accuracy.
+    """
+    _check_stencils(stencils)
+    if stencils.points.shape[1] != 3:
+        raise ValueError(f"curl is only defined in 3 dimensions, but the points have {stencils.points.shape[1]}")
+    field_shape = np.shape(values)[1:]
+    if len(field_shape) == 0 or field_shape[0] != 3:
+        raise ValueError(f"curl needs a field whose first axis after the points has length 3, but one point's value has shape {field_shape}")
+    grad = gradient(stencils, values, at, threaded)
+    single = np.ndim(grad) == len(field_shape) + 1    # a single target: no point axis
+    if single:
+        grad = grad[None]                              # add a point axis, removed again below
+    # grad[p, j, k, ...] = ∂Y_k.../∂x_j; the curl's components ε_ijk ∂_j Y_k
+    result = np.stack([
+        grad[:, 1, 2] - grad[:, 2, 1],                 # ∂Y_3/∂x_2 − ∂Y_2/∂x_3
+        grad[:, 2, 0] - grad[:, 0, 2],                 # ∂Y_1/∂x_3 − ∂Y_3/∂x_1
+        grad[:, 0, 1] - grad[:, 1, 0],                 # ∂Y_2/∂x_1 − ∂Y_1/∂x_2
+    ], axis=1)
+    return result[0] if single else result
+
+
+def laplacian(stencils, values, at=None, threaded=True):
+    """Laplacian ∇²Y ≈ 2 Σ_k a_k ΔY_k of a scalar, vector or tensor field, applied to each
+    component.
+
+    Parameters are as for `gradient`.
+
+    Returns
+    -------
+    ndarray
+        The same shape as the field (for the evaluated points). With a single integer ``at``,
+        the point axis is left out, so a scalar field gives a single number.
+
+    The estimate is exact for quadratic fields with order-1 stencils, and also for cubic fields
+    with order-2 stencils.
+    """
+    flat, field_shape, targets, single = _prepare(stencils, values, at)
+    result = laplacian_kernel(stencils.points, stencils.neighbours, stencils.weights, flat, targets, threaded)
+    result = result.reshape(len(targets), *field_shape)  # the field's own axes
+    return result[0] if single else result
+
+
+def _prepare(stencils, values, at):
+    # Check the inputs of an operator and bring them into the form the Rust kernels take:
+    # the field flattened to one row per point, its own shape, the indices of the points to
+    # evaluate at, and whether a single integer index was given
+    _check_stencils(stencils)
+    values = np.asarray(values, dtype=np.float64)
+    n_points = stencils.points.shape[0]
+    if values.ndim == 0 or values.shape[0] != n_points:
+        raise ValueError(
+            f"values must have one entry per point along the first axis ({n_points} points), "
+            f"got shape {values.shape}"
+        )
+    field_shape = values.shape[1:]                       # one point's value: () for a scalar field
+    flat = values.reshape(n_points, -1)                   # one row of components per point
+    # NumPy indexing turns `at` into point indices, with the usual meaning of negative indices,
+    # slices and boolean masks, and raises IndexError for points that don't exist
+    targets = np.arange(n_points)[slice(None) if at is None else at]
+    single = np.ndim(targets) == 0
+    return flat, field_shape, np.atleast_1d(targets).astype(np.int64), single
+
+
+def _check_stencils(stencils):
+    # The operators need the arrays of a StencilSet
+    if not isinstance(stencils, StencilSet):
+        raise TypeError(f"expected a StencilSet, got {type(stencils).__name__}")

@@ -11,3 +11,4 @@ __pycache__/
 # documentation build output (published by CI, never committed)
 docs/_site/
 docs/.quarto/
+check_python.py
