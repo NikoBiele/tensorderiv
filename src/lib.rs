@@ -1,9 +1,12 @@
 // The Rust core of tensorderiv.
 
-// The stencil weights (src/weights.rs) become a module of this crate
+// The stencil weights (src/weights.rs) and their computation for a whole point cloud
+// (src/stencils.rs) become modules of this crate
+mod stencils;
 mod weights;
 
-use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::ndarray::Array2;
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -55,6 +58,44 @@ fn stencil_weights<'py>(
     Ok(a.into_pyarray(py))
 }
 
+/// Python-visible: the weights of every point's stencil. `points` has one row per point
+/// (shape (points, dims)), and `neighbours` one row of k neighbour indices per point
+/// (shape (points, k)), excluding the point itself. Returns the weights with the shape of
+/// `neighbours`: row i holds the weights of point i's neighbours, in the same order.
+#[pyfunction]
+fn stencil_set_weights<'py>(
+    py: Python<'py>,
+    points: PyReadonlyArray2<'py, f64>,
+    neighbours: PyReadonlyArray2<'py, i64>,
+    order: usize,
+    threaded: bool,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let points = points.as_array(); // the coordinates as a Rust array view, without copying
+    let dims = points.ncols(); // number of dimensions
+    let points = points.as_standard_layout(); // row-major: unchanged if it already is, otherwise copied
+    let neighbours = neighbours.as_array(); // the neighbour indices as a Rust array view
+    let (npoints, k) = neighbours.dim(); // number of points and neighbours per point
+    if npoints != points.nrows() {
+        return Err(PyValueError::new_err(format!(
+            "{npoints} rows of neighbours for {} points",
+            points.nrows()
+        )));
+    }
+    // NumPy indices are signed; convert them, row after row, to Rust's unsigned indices,
+    // rejecting negative ones (`collect` stops at the first error)
+    let indices: Vec<usize> = neighbours
+        .iter()
+        .map(|&j| usize::try_from(j).map_err(|_| format!("negative neighbour index {j}")))
+        .collect::<Result<_, _>>()
+        .map_err(PyValueError::new_err)?;
+    let coordinates = points.as_slice().expect("a standard-layout array is contiguous");
+    let all = stencils::all_weights(coordinates, dims, &indices, k, order, threaded)
+        .map_err(PyValueError::new_err)?;
+    // reshape the flat result into one row per point; the length always matches
+    let all = Array2::from_shape_vec((npoints, k), all).expect("one row of k weights per point");
+    Ok(all.into_pyarray(py))
+}
+
 /// The module Python imports as tensorderiv._core.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -62,5 +103,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(thread_count, m)?)?;
     m.add_function(wrap_pyfunction!(minimum_neighbours, m)?)?;
     m.add_function(wrap_pyfunction!(stencil_weights, m)?)?;
+    m.add_function(wrap_pyfunction!(stencil_set_weights, m)?)?;
     Ok(())
 }
