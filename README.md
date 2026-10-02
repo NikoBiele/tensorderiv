@@ -129,6 +129,10 @@ The default number of neighbours `k` is twice the minimum, because stencils at t
 
 This method descends from a 2016 Stack Overflow answer by a user named Hans, which introduced the moment conditions and the four operators above. That answer computed the weights through the Gram matrix $\mathbf{G} = \mathbf{B}^\mathsf{T}\mathbf{B}$ of the offset matrix $\mathbf{B}$, as $\mathbf{a} = \mathbf{P}\, \big( (\mathbf{G} \circ \mathbf{G})\, \mathbf{P} \big)^+ \mathrm{diag}(\mathbf{G})$, where $\mathbf{P}$ projects onto the null space of $\mathbf{B}$. This formula gives exactly the same weights as the minimum-norm solution above, because $\mathbf{G} \circ \mathbf{G}$ carries the same information as the second-moment equations. This package solves the moment equations directly, which is simpler and faster, and adds the second-order extension.
 
+## Citing
+
+If you use tensorderiv in your work, please cite it: [doi.org/10.5281/zenodo.23111349](https://doi.org/10.5281/zenodo.23111349) (always the latest version). GitHub's "Cite this repository" button gives the citation in APA and BibTeX formats.
+
 ## Declaration of AI Assistance
 
 The Rust core and much of the Python code of tensorderiv were written with substantial assistance from Claude (Anthropic). The method and the reference implementation come from the author's Julia package [DiscreteTensorDerivatives.jl](https://github.com/NikoBiele/DiscreteTensorDerivatives.jl), and the port is validated against it: the test suite compares tensorderiv with the Julia package for the stencil weights, the neighbour lists and all four operators, on scalar, vector and matrix fields in two and three dimensions. The author has reviewed and is responsible for all code.
