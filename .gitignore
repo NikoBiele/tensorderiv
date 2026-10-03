@@ -12,4 +12,4 @@ __pycache__/
 docs/_site/
 docs/.quarto/
 check_python.py
-nabla_logo.py
+nabla_logo_favicon.py

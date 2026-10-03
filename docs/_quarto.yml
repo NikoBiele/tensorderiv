@@ -12,7 +12,7 @@ website:
   repo-subdir: docs                  # "edit this page" links point into docs/
   repo-actions: [edit, issue]        # links under each page's table of contents
   search: true
-  favicon: assets/logo.svg           # the icon in the browser tab
+  favicon: assets/favicon.svg           # the icon in the browser tab
   navbar:
     logo: assets/logo.svg            # a stencil in a point cloud, next to the site title
     logo-alt: "tensorderiv logo: a stencil in a scattered point cloud"
@@ -40,6 +40,7 @@ website:
 format:
   html:
     theme: cosmo                     # the same theme as convinterp.org and gert.net
+    css: styles.css                  # small additions to the theme, such as a larger navbar logo
     toc: true                        # a table of contents on every page
     html-math-method: katex          # fast math rendering, as on convinterp.org
     code-copy: true                  # a copy button on every code block

@@ -1,0 +1,4 @@
+/* A larger logo in the navbar than Quarto's default of at most 24 pixels */
+.navbar-logo {
+  max-height: 40px;
+}

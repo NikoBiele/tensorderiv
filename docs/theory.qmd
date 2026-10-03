@@ -1,0 +1,194 @@
+---
+title: "Theory"
+---
+
+This page explains why weighted differences over scattered neighbours give derivatives, how
+tensorderiv computes the weights, and where the accuracy of the two orders comes from. The notation
+follows the rest of the documentation: $\mathbf{x}_0$ is a point, $\mathbf{x}_k$ are its
+neighbours, $\Delta\mathbf{x}_k = \mathbf{x}_k - \mathbf{x}_0$ their offsets,
+$\Delta Y_k = Y_k - Y_0$ the field differences, $h$ the stencil radius, and $N$ the dimension.
+
+## Derivatives from weighted differences
+
+A Taylor expansion of the field about $\mathbf{x}_0$ gives, for every neighbour,
+
+$$
+\Delta Y_k = \Delta\mathbf{x}_k \cdot \nabla Y
+  + \tfrac{1}{2}\, \mathbf{H} : (\Delta\mathbf{x}_k \otimes \Delta\mathbf{x}_k)
+  + \tfrac{1}{6}\, \mathbf{T} \,\vdots\, (\Delta\mathbf{x}_k \otimes \Delta\mathbf{x}_k \otimes \Delta\mathbf{x}_k)
+  + \mathcal{O}(h^4),
+$$
+
+where $\mathbf{H}$ and $\mathbf{T}$ are the tensors of second and third derivatives. The idea is to
+choose one weight $a_k$ per neighbour, so that weighted sums of the $\Delta Y_k$ isolate the
+derivatives. The weighted sums of the offsets, the *moments* of the stencil, decide what each sum
+contains:
+
+$$
+\mathbf{M}_1 = \sum_k a_k\, \Delta\mathbf{x}_k, \qquad
+\mathbf{M}_2 = \sum_k a_k\, \Delta\mathbf{x}_k \otimes \Delta\mathbf{x}_k, \qquad
+\mathbf{M}_3 = \sum_k a_k\, \Delta\mathbf{x}_k \otimes \Delta\mathbf{x}_k \otimes \Delta\mathbf{x}_k, \qquad \dots
+$$
+
+Multiplying the Taylor expansion by $a_k \Delta\mathbf{x}_k$ and summing gives
+
+$$
+\sum_k a_k\, \Delta\mathbf{x}_k\, \Delta Y_k
+  = \mathbf{M}_2 \nabla Y + \tfrac{1}{2}\, \mathbf{M}_3 : \mathbf{H} + \tfrac{1}{6}\, \mathbf{M}_4 \,\vdots\, \mathbf{T} + \dots,
+$$
+
+and multiplying by $a_k$ alone and summing gives
+
+$$
+\sum_k a_k\, \Delta Y_k
+  = \mathbf{M}_1 \cdot \nabla Y + \tfrac{1}{2}\, \mathbf{M}_2 : \mathbf{H} + \tfrac{1}{6}\, \mathbf{M}_3 \,\vdots\, \mathbf{T} + \dots
+$$
+
+So if the weights satisfy the *moment conditions*
+
+$$
+\mathbf{M}_1 = \mathbf{0}, \qquad \mathbf{M}_2 = \mathbf{I},
+$$
+
+the first sum starts with the gradient, and twice the second sum starts with the trace of the
+Hessian, the Laplacian. This gives the four operators:
+
+$$
+\nabla \otimes Y \approx \sum_k a_k\, \Delta\mathbf{x}_k \otimes \Delta Y_k, \qquad
+\nabla \cdot Y \approx \sum_k a_k\, \Delta\mathbf{x}_k \cdot \Delta Y_k,
+$$
+
+$$
+\nabla \times Y \approx \sum_k a_k\, \Delta\mathbf{x}_k \times \Delta Y_k, \qquad
+\nabla^2 Y \approx 2 \sum_k a_k\, \Delta Y_k.
+$$
+
+The divergence and the curl are contractions of the gradient, so they share its accuracy. Nothing
+here depends on what $Y$ is: the same weights serve scalar, vector and tensor fields of any rank.
+
+## Accuracy
+
+The terms left over in the two sums are the errors. Because $\mathbf{M}_2 = \mathbf{I}$, the weights
+scale as $a_k \sim 1/h^2$, so a moment $\mathbf{M}_n$ scales as $h^{n-2}$.
+
+**First order** satisfies only $\mathbf{M}_1 = \mathbf{0}$ and $\mathbf{M}_2 = \mathbf{I}$. The
+gradient's leading error is $\tfrac{1}{2}\, \mathbf{M}_3 : \mathbf{H} \sim h$, so it is first order,
+and exact for linear fields. The Laplacian's leading error is $\tfrac{1}{3}\, \mathbf{M}_3 \,\vdots\, \mathbf{T} \sim h$:
+also first order, but exact one degree higher, for quadratic fields, since it involves only third
+derivatives.
+
+**Second order** also requires $\mathbf{M}_3 = \mathbf{0}$. That removes both leading errors, so the
+gradient's error becomes $\tfrac{1}{6}\, \mathbf{M}_4 \,\vdots\, \mathbf{T} \sim h^2$ and the
+Laplacian's $\tfrac{1}{12}\, \mathbf{M}_4 :: \mathbf{Q} \sim h^2$, with $\mathbf{Q}$ the fourth
+derivatives. The gradient becomes exact for quadratic fields, and the Laplacian for cubic ones.
+
+On a point-symmetric stencil, where every offset $\Delta\mathbf{x}_k$ has a partner $-\Delta\mathbf{x}_k$
+with the same weight, all odd moments vanish by symmetry. That is why central differences on a grid
+are second order without any extra condition. On scattered points, symmetry cannot be relied on, and
+order 2 imposes $\mathbf{M}_3 = \mathbf{0}$ explicitly.
+
+## How many neighbours
+
+Each moment condition is a set of linear equations for the weights, one per independent entry of the
+moment. The moments are symmetric tensors, so their independent entries are those with
+non-decreasing indices:
+
+| Condition | Equations | 2D | 3D |
+|---|---|---|---|
+| $\mathbf{M}_1 = \mathbf{0}$ | $N$ | 2 | 3 |
+| $\mathbf{M}_2 = \mathbf{I}$ | $N(N+1)/2$ | 3 | 6 |
+| $\mathbf{M}_3 = \mathbf{0}$ | $N(N+1)(N+2)/6$ | 4 | 10 |
+| **Order 1** | $N(N+3)/2$ | **5** | **9** |
+| **Order 2** | $N(N+3)/2 + N(N+1)(N+2)/6$ | **9** | **19** |
+
+There is one unknown weight per neighbour, so a stencil needs at least as many neighbours as
+equations; `minimum_neighbours` returns these numbers. With exactly the minimum, the system is
+square and often ill-conditioned, which is why the default is twice the minimum.
+
+## Computing the weights
+
+Collected, the conditions form a small linear system $\mathbf{A}\mathbf{a} = \mathbf{b}$, with one
+column per neighbour. With more neighbours than equations, it has many solutions, and tensorderiv
+takes the one with minimum norm:
+
+$$
+\mathbf{a} = \arg\min_{\mathbf{a}} \|\mathbf{a}\| \quad \text{subject to} \quad \mathbf{A}\mathbf{a} = \mathbf{b}.
+$$
+
+Small weights matter in practice: noise of size $\sigma$ in the field values causes an error of
+about $\sigma \|\mathbf{a}\|\, h$ in the gradient, so the minimum-norm weights are the least
+sensitive to noise among all valid ones.
+
+The system is solved one stencil at a time. The offsets are first divided by the stencil radius $h$,
+so that the equations of the first, second and third moments, which scale as $h$, $h^2$ and $h^3$,
+are of similar size. The rows of $\mathbf{A}$ are then orthonormalized by Gram–Schmidt, with two
+passes for full orthogonality, while the right-hand side is carried along; the minimum-norm solution
+is then a combination of the orthonormal rows.
+
+A row that becomes negligible during the orthonormalization is linearly dependent on the earlier
+ones, and is dropped. For order 2, that can happen to third-moment equations, for example on the
+faces of a regular grid, where the stencil spans only three layers of points and $z^3$ is a
+combination of $1$, $z$ and $z^2$. The stencil then stays correct, but only to first order, as
+stencils at a boundary do anyway. If a first- or second-moment equation cannot be met, the stencil
+is useless: this happens when the neighbours lie on a curve or surface. tensorderiv therefore
+checks every stencil after solving, and raises an error if $\mathbf{M}_1 = \mathbf{0}$ or
+$\mathbf{M}_2 = \mathbf{I}$ is violated by more than $10^{-6}$.
+
+For one real stencil, the moments come out as intended:
+
+```{python}
+import numpy as np                                     # arrays
+import tensorderiv as td                               # the package
+
+np.set_printoptions(precision=3, suppress=True)        # compact printing
+rng = np.random.default_rng(0)                         # reproducible random points
+points = rng.random((2_000, 3))                        # scattered points in the unit cube
+stencils = td.StencilSet(points)                       # second-order stencils, 38 neighbours
+p = 1_000                                              # look at one point's stencil
+dx = points[stencils.neighbours[p]] - points[p]        # its offsets Δx_k, one row per neighbour
+a = stencils.weights[p]                                # its weights a_k
+
+print("first moment  Σ a Δx:\n", (a @ dx).round(12) + 0.0)                   # should be 0
+print("second moment Σ a Δx Δxᵀ:\n", np.einsum("k,ki,kj->ij", a, dx, dx).round(12) + 0.0)  # should be I
+third = np.einsum("k,ki,kj,kl->ijl", a, dx, dx, dx)                          # should be 0
+print("largest third moment |Σ a Δx ⊗ Δx ⊗ Δx|:", np.abs(third).max())
+```
+
+## Relation to the original formula
+
+The method descends from a 2016 Stack Overflow answer by a user named Hans, which computed the
+first-order weights differently. With $\mathbf{B}$ the matrix whose columns are the offsets, and
+$\mathbf{G} = \mathbf{B}^\mathsf{T}\mathbf{B}$ their Gram matrix, the condition
+$\mathbf{M}_2 = \mathbf{B}\,\mathrm{diag}(\mathbf{a})\,\mathbf{B}^\mathsf{T} = \mathbf{I}$ implies
+$\mathbf{G}\,\mathrm{diag}(\mathbf{a})\,\mathbf{G} = \mathbf{G}$. Taking the diagonal of both sides
+turns this into a linear system for the weights,
+
+$$
+(\mathbf{G} \circ \mathbf{G})\, \mathbf{a} = \mathrm{diag}(\mathbf{G}),
+$$
+
+where $\circ$ is the elementwise product. Together with $\mathbf{M}_1 = \mathbf{B}\mathbf{a} = \mathbf{0}$,
+enforced through the projector $\mathbf{P} = \mathbf{I} - \mathbf{G}^+\mathbf{G}$ onto the null
+space of $\mathbf{B}$, this gives
+
+$$
+\mathbf{a} = \mathbf{P}\, \big( (\mathbf{G} \circ \mathbf{G})\, \mathbf{P} \big)^+ \mathrm{diag}(\mathbf{G}).
+$$
+
+These are exactly the minimum-norm weights above. The matrix $\mathbf{G} \circ \mathbf{G}$ is as
+large as the number of neighbours, but its rank is only $N(N+1)/2$, the number of second-moment
+equations: it carries the same information in a larger, rank-deficient form. tensorderiv solves the
+small system directly, which is faster and better conditioned, and extends it with the third
+moments for order 2. The two formulas agree to rounding:
+
+```{python}
+first_order = td.StencilSet(points, order=1)           # first-order stencils: Hans's conditions
+dx = points[first_order.neighbours[p]] - points[p]     # the offsets of point p's stencil
+B = dx.T                                               # Hans's offset matrix: one column per neighbour
+G = B.T @ B                                            # the Gram matrix of the offsets
+P = np.eye(len(G)) - np.linalg.pinv(G) @ G             # projector onto the null space of B
+hans = P @ np.linalg.pinv((G * G) @ P) @ np.diag(G)    # Hans's formula
+print("largest difference from the package's weights:",
+      np.abs(hans - first_order.weights[p]).max() / np.abs(hans).max())
+print("rank of G ∘ G:", np.linalg.matrix_rank(G * G), "of", len(G), "neighbours")
+```
