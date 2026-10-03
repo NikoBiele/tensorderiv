@@ -4,6 +4,8 @@ Gradient, divergence, curl and Laplacian of scalar, vector and tensor fields sam
 
 tensorderiv is a port of the Julia package [DiscreteTensorDerivatives.jl](https://github.com/NikoBiele/DiscreteTensorDerivatives.jl), by the same author, and is tested against it.
 
+**Documentation: [tensorderiv.org](https://tensorderiv.org)**, with a user guide, accuracy and speed measurements, and the theory behind the method.
+
 **Status: alpha.** All four operators work in any dimension (the curl in 3D), for fields of any rank.
 
 ## Installation
